@@ -1,14 +1,12 @@
 import re
 import logging
 from urllib.parse import urljoin
-
 import requests_cache
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-
-from constants import BASE_DIR, MAIN_DOC_URL
 from configs import configure_argument_parser, configure_logging
-from outputs import control_output
+from constants import BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL, EXPECTED_STATUS, SUM_PEP_STATUS
+from outputs import control_output, pretty_output
 from utils import get_response, find_tag
 
 
@@ -86,7 +84,7 @@ def download(session):
         return
     soup = BeautifulSoup(response.text, features='lxml')
     table = find_tag(soup, 'table')
-    pdf_a4_tag = find_tag(table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')}) 
+    pdf_a4_tag = find_tag(table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
@@ -105,10 +103,50 @@ def download(session):
     logging.info(f'Архив был загружен и сохранён: {archive_path}')
 
 
+def pep(session):
+    response = get_response(session, MAIN_PEP_URL)
+    if response is None:
+        return
+    soup = BeautifulSoup(response.text, features='lxml')
+    pep_table = find_tag(soup, 'section', attrs={'id': 'numerical-index'})
+    rows_table = pep_table.find_all('tr')
+    result = [('Статус', 'Количество')]
+    for i in range(1, 10):
+        row_href = find_tag(
+            rows_table[i], 'a', attrs={'class': 'pep reference internal'}
+            )['href']
+        row_type_and_status = find_tag(rows_table[i], 'abbr').text
+        if len(row_type_and_status) != 1:
+            preview_status = row_type_and_status[1]
+        row_link = urljoin(MAIN_PEP_URL, row_href)
+        response = get_response(session, row_link)
+        soup = BeautifulSoup(response.text, features='lxml')
+        pep_title = find_tag(
+            soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
+        )
+        for tag in pep_title:
+            if tag.name == 'dt' and tag.text == 'Status:':
+                pep_status = tag.next_sibling.next_sibling.string
+                SUM_PEP_STATUS[pep_status] += 1
+                if pep_status[0] != preview_status:
+                    logging.info(
+                        f'''Несовпадающие статусы:'
+                            {row_link}'
+                            Статус в карточке:{pep_status}
+                            Ожидаемые статусы:{EXPECTED_STATUS[preview_status]}
+                        '''
+                    )
+    for status, value in SUM_PEP_STATUS.items():
+        result.append((status, value))
+    result.append(('Total', 10))
+    return result
+
+
 MODE_TO_FUNCTION = {
     'whats-new': whats_new,
     'latest-versions': latest_versions,
     'download': download,
+    'pep': pep
 }
 
 def main():
