@@ -27,3 +27,5 @@ SUM_PEP_STATUS = {
     'Withdrawn': 0,
     'Draft': 0,
 }
+RESULT_POSTFIX = 'results'
+DOWNLOAD_POSTFIX = 'downloads'

@@ -1,8 +1,9 @@
 import logging
 from requests import RequestException
 from exceptions import ParserFindTagException
+from bs4 import BeautifulSoup
 
-# Перехват ошибки RequestException.
+
 def get_response(session, url):
     try:
         response = session.get(url) 
@@ -22,3 +23,11 @@ def find_tag(soup, tag, attrs=None):
         logging.error(error_msg, stack_info=True)
         raise ParserFindTagException(error_msg)
     return searched_tag
+
+
+def get_soup(session, url):
+    response = get_response(session, url)
+    if response is None:
+        raise ConnectionError('Problem with connection')
+    soup = BeautifulSoup(response.text, features='lxml')
+    return soup
