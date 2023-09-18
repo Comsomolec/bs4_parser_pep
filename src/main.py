@@ -2,7 +2,6 @@ import re
 import logging
 import requests_cache
 from urllib.parse import urljoin
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 from configs import configure_argument_parser, configure_logging
 from constants import (
@@ -10,7 +9,7 @@ from constants import (
     SUM_PEP_STATUS, DOWNLOAD_POSTFIX
 )
 from outputs import control_output
-from utils import get_response, find_tag, get_soup
+from utils import find_tag, get_soup
 
 
 def whats_new(session):
@@ -95,7 +94,7 @@ def pep(session):
             if tag.name == 'dt' and tag.text == 'Status:':
                 pep_status = tag.next_sibling.next_sibling.string
                 if pep_status not in SUM_PEP_STATUS or (
-                    pep_status[0] != preview_status):
+                            pep_status[0] != preview_status):
                     logging.info(
                         f'''Несовпадающие статусы:'
                             {row_link}'
@@ -134,8 +133,8 @@ def main():
         if results is not None:
             control_output(results, args)
     except Exception as error:
-        logging.error('Возникла ошибка: {error}', stack_info=True)
-    logging.info('Парсер завершил работу.') 
+        logging.error(f'Возникла ошибка: {error}', stack_info=True)
+    logging.info('Парсер завершил работу.')
 
 
 if __name__ == '__main__':
