@@ -47,10 +47,10 @@ def latest_versions(session):
     result = [('Ссылка на документацию', 'Версия', 'Статус')]
     for tag in a_tags:
         link = tag['href']
-        try:
-            text_match = re.search(pattern, tag.text)
+        text_match = re.search(pattern, tag.text)
+        if text_match:
             version, status = text_match.groups()
-        except:
+        else:
             version, status = tag.text, ''
         result.append((link, version, status))
     return result
