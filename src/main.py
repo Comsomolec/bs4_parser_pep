@@ -1,35 +1,52 @@
 import re
 import logging
 import requests_cache
+from requests import ConnectionError
+
 from urllib.parse import urljoin
 from tqdm import tqdm
+
 from configs import configure_argument_parser, configure_logging
 from constants import (
     BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL, EXPECTED_STATUS,
-    SUM_PEP_STATUS, DOWNLOAD_POSTFIX
+    POSTFIX, OUTPUT_TYPE
 )
 from outputs import control_output
 from utils import find_tag, get_soup
 
 
+CONNECTION_ERROR_MESSAGE = 'Ошибка при запросе по адресу: {url}'
+
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    soup = get_soup(session, whats_new_url)
-    main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
-    div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
-    sections_by_python = div_with_ul.find_all(
-        'li', attrs={'class': 'toctree-l1'}
+    try:
+        soup = get_soup(session, whats_new_url)
+    except ConnectionError:
+        raise ValueError(CONNECTION_ERROR_MESSAGE.format(url=whats_new_url))
+    # main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'}) 
+    # div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'}) 
+    # sections_by_python = div_with_ul.find_all( 
+    #     'li', attrs={'class': 'toctree-l1'}
+    # )
+    sections_by_python = soup.select(
+        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
     )
     result = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
     for section in tqdm(sections_by_python):
         version_a_tag = find_tag(section, 'a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
-        soup = get_soup(session, version_link)
-        h1 = find_tag(soup, 'h1')
-        dl = find_tag(soup, 'dl')
-        dl_text = dl.text.replace('\n', ' ')
-        result.append((version_link, h1.text, dl_text))
+        try:
+            soup = get_soup(session, version_link)
+        except ConnectionError:
+            raise ValueError(
+                CONNECTION_ERROR_MESSAGE.format(url=version_link)
+            )
+        result.append((
+            version_link,
+            find_tag(soup, 'h1').text,
+            find_tag(soup, 'dl').text.replace('\n', ' ')
+        ))
     return result
 
 
@@ -43,7 +60,7 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise Exception('Ничего не нашлось')
+        raise RuntimeError('Ничего не нашлось')
     result = [('Ссылка на документацию', 'Версия', 'Статус')]
     for tag in a_tags:
         link = tag['href']
@@ -106,7 +123,7 @@ def pep(session):
                     SUM_PEP_STATUS[pep_status] += 1
     for status, value in SUM_PEP_STATUS.items():
         result.append((status, value))
-    result.append(('Total', len(rows_table) - 1))
+    result.append(('Итого:', len(rows_table) - 1))
     return result
 
 

@@ -12,6 +12,10 @@ class POSTFIX(Enum):
     LOG = 'logs'
     LOG_FILE = 'parser.log'
 
+    def __str__(self):
+        return self.name
+
+
 class OUTPUT_TYPE(Enum):
     PRETTY = 'pretty'
     FILE = 'file'

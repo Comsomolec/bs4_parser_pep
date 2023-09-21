@@ -28,9 +28,9 @@ def configure_argument_parser(available_modes):
 
 
 def configure_logging():
-    log_dir = BASE_DIR / POSTFIX.LOG
+    log_dir = BASE_DIR / POSTFIX.LOG.value
     log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / POSTFIX.LOG_FILE
+    log_file = log_dir / POSTFIX.LOG_FILE.value
     rotating_handler = RotatingFileHandler(
         log_file, maxBytes=10 ** 6, backupCount=5, encoding='utf-8'
     )
