@@ -1,33 +1,34 @@
 import re
 import logging
 import requests_cache
-from requests import ConnectionError
+from collections import defaultdict
 
 from urllib.parse import urljoin
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
 from constants import (
-    BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL, EXPECTED_STATUS,
-    POSTFIX, OUTPUT_TYPE
+    BASE_DIR, MAIN_DOC_URL, MAIN_PEP_URL, EXPECTED_STATUS, DOWNLOAD
 )
 from outputs import control_output
 from utils import find_tag, get_soup
 
 
-CONNECTION_ERROR_MESSAGE = 'Ошибка при запросе по адресу: {url}'
+SOUP_ERROR_MESSAGE = 'Не удалось создать "суп" ссылки: {url}'
+LOAD_COMPLETE_MESSAGE = 'Архив был загружен и сохранён: {archive_path}'
+WRONG_STATUSES_MESSAGE = (
+    'Несовпадающие статусы: {row_link}. '
+    'Статус в карточке:{pep_status}. '
+    'Ожидаемые статусы:{expect_status}.'
+)
+
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     try:
         soup = get_soup(session, whats_new_url)
-    except ConnectionError:
-        raise ValueError(CONNECTION_ERROR_MESSAGE.format(url=whats_new_url))
-    # main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'}) 
-    # div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'}) 
-    # sections_by_python = div_with_ul.find_all( 
-    #     'li', attrs={'class': 'toctree-l1'}
-    # )
+    except AttributeError:
+        raise ValueError(SOUP_ERROR_MESSAGE.format(url=whats_new_url))
     sections_by_python = soup.select(
         '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
     )
@@ -38,9 +39,9 @@ def whats_new(session):
         version_link = urljoin(whats_new_url, href)
         try:
             soup = get_soup(session, version_link)
-        except ConnectionError:
+        except AttributeError:
             raise ValueError(
-                CONNECTION_ERROR_MESSAGE.format(url=version_link)
+                SOUP_ERROR_MESSAGE.format(url=version_link)
             )
         result.append((
             version_link,
@@ -51,9 +52,13 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    soup = get_soup(session, MAIN_DOC_URL)
-    sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
-    ul_tags = sidebar.find_all('ul')
+    try:
+        soup = get_soup(session, MAIN_DOC_URL)
+    except AttributeError:
+        raise ValueError(
+            SOUP_ERROR_MESSAGE.format(url=MAIN_DOC_URL)
+        )
+    ul_tags = soup.select('div.sphinxsidebarwrapper > ul')
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for ul in ul_tags:
         if 'All versions' in ul.text:
@@ -75,56 +80,74 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    soup = get_soup(session, downloads_url)
+    try:
+        soup = get_soup(session, downloads_url)
+    except AttributeError:
+        raise ValueError(
+            SOUP_ERROR_MESSAGE.format(url=downloads_url)
+        )
     table = find_tag(soup, 'table')
     pdf_a4_tag = find_tag(table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
-    downloads_dir = BASE_DIR / DOWNLOAD_POSTFIX
+    downloads_dir = BASE_DIR / DOWNLOAD
     downloads_dir.mkdir(exist_ok=True)
     archive_path = downloads_dir / filename
     response = session.get(archive_url)
     with open(archive_path, 'wb') as file:
         file.write(response.content)
-    logging.info(f'Архив был загружен и сохранён: {archive_path}')
+    logging.info(LOAD_COMPLETE_MESSAGE.format(archive_path=archive_path))
 
 
 def pep(session):
-    soup = get_soup(session, MAIN_PEP_URL)
-    pep_table = find_tag(soup, 'section', attrs={'id': 'numerical-index'})
-    rows_table = pep_table.find_all('tr')
-    result = [('Статус', 'Количество')]
-    for i in tqdm(range(1, len(rows_table))):
+    try:
+        soup = get_soup(session, MAIN_PEP_URL)
+    except AttributeError:
+        raise ValueError(
+            SOUP_ERROR_MESSAGE.format(url=MAIN_PEP_URL)
+        )
+    rows_table = soup.select('#numerical-index tr')
+    count_pep_status = defaultdict(int)
+    wrong_statuses_message = []
+    for row in tqdm(rows_table[1:]):
         row_href = find_tag(
-            rows_table[i], 'a', attrs={'class': 'pep reference internal'}
+            row, 'a', attrs={'class': 'pep reference internal'}
             )['href']
-        row_type_and_status = find_tag(rows_table[i], 'abbr').text
+        row_type_and_status = find_tag(row, 'abbr').text
         if len(row_type_and_status) != 1:
             preview_status = row_type_and_status[1]
         row_link = urljoin(MAIN_PEP_URL, row_href)
-        soup = get_soup(session, row_link)
+        try:
+            soup = get_soup(session, row_link)
+        except AttributeError:
+            raise ValueError(
+                SOUP_ERROR_MESSAGE.format(url=row_link)
+            )
         pep_title = find_tag(
             soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
         )
         for tag in pep_title:
-            if tag.name == 'dt' and tag.text == 'Status:':
-                pep_status = tag.next_sibling.next_sibling.string
-                if pep_status not in SUM_PEP_STATUS or (
-                            pep_status[0] != preview_status):
-                    logging.info(
-                        f'''Несовпадающие статусы:'
-                            {row_link}'
-                            Статус в карточке:{pep_status}
-                            Ожидаемые статусы:{EXPECTED_STATUS[preview_status]}
-                        '''
+            if tag.name != 'dt' or tag.text != 'Status:':
+                continue
+            pep_status = tag.next_sibling.next_sibling.string
+            if pep_status[0] != preview_status:
+                wrong_statuses_message.append(
+                    WRONG_STATUSES_MESSAGE.format(
+                        row_link=row_link,
+                        pep_status=pep_status,
+                        expect_status=EXPECTED_STATUS[preview_status]
                     )
-                else:
-                    SUM_PEP_STATUS[pep_status] += 1
-    for status, value in SUM_PEP_STATUS.items():
-        result.append((status, value))
-    result.append(('Итого:', len(rows_table) - 1))
-    return result
+                )
+            else:
+                count_pep_status[pep_status] += 1
+    for message in wrong_statuses_message:
+        logging.info(message)
+    return [
+        ('Статус', 'Количество'),
+        count_pep_status.items(),
+        ('Всего', sum(count_pep_status.values())),
+    ]
 
 
 MODE_TO_FUNCTION = {

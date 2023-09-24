@@ -2,7 +2,9 @@ import argparse
 import logging
 from logging.handlers import RotatingFileHandler
 
-from constants import BASE_DIR, LOG_FORMAT, DT_FORMAT, POSTFIX, OUTPUT_TYPE
+from constants import (
+    BASE_DIR, LOG, LOG_FILE, LOG_FORMAT, DT_FORMAT, OUTPUT_TYPE
+)
 
 
 def configure_argument_parser(available_modes):
@@ -21,16 +23,18 @@ def configure_argument_parser(available_modes):
     parser.add_argument(
         '-o',
         '--output',
-        choices=(OUTPUT_TYPE.PRETTY, OUTPUT_TYPE.FILE),
+        type=OUTPUT_TYPE.from_string,
+        choices=tuple([e.value for e in OUTPUT_TYPE]),
+        #choices=('pretty', 'file'),
         help='Дополнительные способы вывода данных'
     )
     return parser
 
 
 def configure_logging():
-    log_dir = BASE_DIR / POSTFIX.LOG.value
+    log_dir = BASE_DIR / LOG
     log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / POSTFIX.LOG_FILE.value
+    log_file = log_dir / LOG_FILE
     rotating_handler = RotatingFileHandler(
         log_file, maxBytes=10 ** 6, backupCount=5, encoding='utf-8'
     )

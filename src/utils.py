@@ -8,10 +8,10 @@ REQUEST_MESSAGE_ERROR = 'Возникла ошибка при загрузке �
 FIND_TAG_MESSAGE_ERROR = 'Не найден тег {tag} {attrs}'
 
 
-def get_response(session, url, format='utf-8'):
+def get_response(session, url, encoding='utf-8'):
     try:
         response = session.get(url)
-        response.encoding = format
+        response.encoding = encoding
         return response
     except:
         raise RequestException (REQUEST_MESSAGE_ERROR.format(url=url))
