@@ -4,18 +4,18 @@ import datetime as dt
 
 from prettytable import PrettyTable
 
-from constants import BASE_DIR, DATETIME_FORMAT, RESULT, OUTPUT_TYPE
+from constants import BASE_DIR, DATETIME_FORMAT, RESULT, PRETTY, FILE
 
 
 MESSAGE_PATTERN = 'Файл с результатами был сохранён: {file_path}'
 
 
-def default_output(results):
+def default_output(results, *args):
     for row in results:
         print(*row)
 
 
-def pretty_output(results):
+def pretty_output(results, *args):
     table = PrettyTable()
     table.field_names = results[0]
     table.align = 'l'
@@ -37,13 +37,10 @@ def file_output(results, cli_args):
     logging.info(MESSAGE_PATTERN.format(file_path=file_path))
 
 
-
 def control_output(results, cli_args):
-    output = cli_args.output
-    output_options = {
-        OUTPUT_TYPE.pretty: [pretty_output, results],
-        OUTPUT_TYPE.file: [file_output, results, cli_args],
-        None: [default_output, results]
+    output_dict = {
+        PRETTY: pretty_output,
+        FILE: file_output,
+        None: default_output
     }
-    mode = output_options[output][0]
-    mode(*output_options[output][1:])
+    output_dict[cli_args.output](results, cli_args)
