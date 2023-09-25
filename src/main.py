@@ -25,10 +25,7 @@ WRONG_STATUSES_MESSAGE = (
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    try:
-        soup = get_soup(session, whats_new_url)
-    except AttributeError:
-        raise ValueError(SOUP_ERROR_MESSAGE.format(url=whats_new_url))
+    soup = get_soup(session, whats_new_url)
     sections_by_python = soup.select(
         '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
     )
@@ -52,12 +49,7 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    try:
-        soup = get_soup(session, MAIN_DOC_URL)
-    except AttributeError:
-        raise ValueError(
-            SOUP_ERROR_MESSAGE.format(url=MAIN_DOC_URL)
-        )
+    soup = get_soup(session, MAIN_DOC_URL)
     ul_tags = soup.select('div.sphinxsidebarwrapper > ul')
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for ul in ul_tags:
@@ -80,12 +72,7 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    try:
-        soup = get_soup(session, downloads_url)
-    except AttributeError:
-        raise ValueError(
-            SOUP_ERROR_MESSAGE.format(url=downloads_url)
-        )
+    soup = get_soup(session, downloads_url)
     table = find_tag(soup, 'table')
     pdf_a4_tag = find_tag(table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})
     pdf_a4_link = pdf_a4_tag['href']
@@ -101,12 +88,7 @@ def download(session):
 
 
 def pep(session):
-    try:
-        soup = get_soup(session, MAIN_PEP_URL)
-    except AttributeError:
-        raise ValueError(
-            SOUP_ERROR_MESSAGE.format(url=MAIN_PEP_URL)
-        )
+    soup = get_soup(session, MAIN_PEP_URL)
     rows_table = soup.select('#numerical-index tr')
     count_pep_status = defaultdict(int)
     wrong_statuses_message = []
@@ -118,6 +100,7 @@ def pep(session):
         if len(row_type_and_status) != 1:
             preview_status = row_type_and_status[1]
         row_link = urljoin(MAIN_PEP_URL, row_href)
+        soup = get_soup(session, row_link)
         try:
             soup = get_soup(session, row_link)
         except AttributeError:
