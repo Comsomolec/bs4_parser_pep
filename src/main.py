@@ -30,11 +30,18 @@ WRONG_STATUSES_MESSAGE = (
 
 
 def whats_new(session):
+    # Строка селекторов длинной 88 символов, требуется "+" - "Конкатенация".
+    logs = []
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     result = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
-    for a_tag in tqdm(get_soup(session, whats_new_url).select(
-        '#what-s-new-in-python div.toctree-wrapper ' +
-            'li.toctree-l1 a:-soup-contains("What’s New")')):
+    for a_tag in tqdm(
+        get_soup(
+            session, whats_new_url
+        ).select(
+            '#what-s-new-in-python div.toctree-wrapper ' +
+            'li.toctree-l1 a:-soup-contains("What’s New")'
+        )
+    ):
         href = a_tag['href']
         version_link = urljoin(whats_new_url, href)
         try:
@@ -45,16 +52,20 @@ def whats_new(session):
                 find_tag(soup, 'dl').text.replace('\n', ' ')
             ))
         except ConnectionError as error:
-            logging.error(
+            logs.append(
                 SOUP_ERROR_MESSAGE.format(url=version_link, error=error)
             )
+    list(map(logging.error, logs))
     return result
 
 
 def latest_versions(session):
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
-    for ul in get_soup(session, MAIN_DOC_URL
-                       ).select('div.sphinxsidebarwrapper > ul'):
+    for ul in get_soup(
+        session, MAIN_DOC_URL
+    ).select(
+      'div.sphinxsidebarwrapper > ul'
+    ):
         if 'All versions' in ul.text:
             a_tags = ul.find_all('a')
             break
@@ -76,7 +87,12 @@ def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
     table = find_tag(get_soup(session, downloads_url), 'table')
     pdf_a4_link = find_tag(
-        table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})['href']
+        table,
+        'a',
+        {
+            'href': re.compile(r'.+pdf-a4\.zip$')
+        }
+    )['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
     downloads_dir = BASE_DIR / DOWNLOAD
@@ -90,6 +106,7 @@ def download(session):
 
 def pep(session):
     count_pep_status = defaultdict(int)
+    logs = []
     wrong_statuses_message = []
     for row in tqdm(get_soup(session, MAIN_PEP_URL
                              ).select('#numerical-index tr')[1:]):
@@ -103,9 +120,10 @@ def pep(session):
         try:
             soup = get_soup(session, row_link)
         except ConnectionError as error:
-            logging.error(
+            logs.append(
                 SOUP_ERROR_MESSAGE.format(url=row_link, error=error)
             )
+            continue
         pep_title = find_tag(
             soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
         )
@@ -123,6 +141,7 @@ def pep(session):
                 )
             else:
                 count_pep_status[pep_status] += 1
+    list(map(logging.error, logs))
     list(map(logging.info, wrong_statuses_message))
     return [
         ('Статус', 'Количество'),
