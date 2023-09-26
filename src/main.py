@@ -1,10 +1,11 @@
 import re
 import logging
-import requests_cache
 from collections import defaultdict
 
-from urllib.parse import urljoin
+import requests_cache
+from requests import ConnectionError
 from tqdm import tqdm
+from urllib.parse import urljoin
 
 from configs import configure_argument_parser, configure_logging
 from constants import (
@@ -14,8 +15,13 @@ from outputs import control_output
 from utils import find_tag, get_soup
 
 
-SOUP_ERROR_MESSAGE = 'Не удалось создать "суп" ссылки: {url}'
-LOAD_COMPLETE_MESSAGE = 'Архив был загружен и сохранён: {archive_path}'
+EMPTY_RESULT_MESSAGE = 'Ничего не нашлось'
+LOADING_COMPLETE_MESSAGE = 'Архив был загружен и сохранён: {archive_path}'
+LOG_INFO_ARG_MESSAGE = 'Аргументы командной строки: {args}'
+LOG_ERROR_MESSAGE = 'Возникла ошибка: {error}'
+SOUP_ERROR_MESSAGE = 'Не удалось создать "суп" ссылки: {url}: {error}'
+PASRER_START = 'Парсер запущен!'
+PARSER_COMPLETE = 'Парсер завершил работу.'
 WRONG_STATUSES_MESSAGE = (
     'Несовпадающие статусы: {row_link}. '
     'Статус в карточке:{pep_status}. '
@@ -25,26 +31,25 @@ WRONG_STATUSES_MESSAGE = (
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    soup = get_soup(session, whats_new_url)
-    sections_by_python = soup.select(
-        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
-    )
+    internal_links = get_soup(session, whats_new_url).select_one(
+        '#what-s-new-in-python div.toctree-wrapper'
+        ).select('li.toctree-l1 a:-soup-contains("What’s New")')
     result = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
-    for section in tqdm(sections_by_python):
-        version_a_tag = find_tag(section, 'a')
-        href = version_a_tag['href']
+    for a_tag in tqdm(internal_links):
+        href = a_tag['href']
         version_link = urljoin(whats_new_url, href)
         try:
             soup = get_soup(session, version_link)
-        except AttributeError:
-            raise ValueError(
-                SOUP_ERROR_MESSAGE.format(url=version_link)
+            result.append((
+                version_link,
+                find_tag(soup, 'h1').text,
+                find_tag(soup, 'dl').text.replace('\n', ' ')
+            ))
+        except ConnectionError as error:
+            ValueError(
+                SOUP_ERROR_MESSAGE.format(url=version_link, error=error)
             )
-        result.append((
-            version_link,
-            find_tag(soup, 'h1').text,
-            find_tag(soup, 'dl').text.replace('\n', ' ')
-        ))
+            continue
     return result
 
 
@@ -57,7 +62,7 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise RuntimeError('Ничего не нашлось')
+        raise RuntimeError(EMPTY_RESULT_MESSAGE)
     result = [('Ссылка на документацию', 'Версия', 'Статус')]
     for tag in a_tags:
         link = tag['href']
@@ -72,8 +77,7 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    soup = get_soup(session, downloads_url)
-    table = find_tag(soup, 'table')
+    table = find_tag(get_soup(session, downloads_url), 'table')
     pdf_a4_tag = find_tag(table, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
@@ -84,29 +88,26 @@ def download(session):
     response = session.get(archive_url)
     with open(archive_path, 'wb') as file:
         file.write(response.content)
-    logging.info(LOAD_COMPLETE_MESSAGE.format(archive_path=archive_path))
+    logging.info(LOADING_COMPLETE_MESSAGE.format(archive_path=archive_path))
 
 
 def pep(session):
-    soup = get_soup(session, MAIN_PEP_URL)
-    rows_table = soup.select('#numerical-index tr')
     count_pep_status = defaultdict(int)
     wrong_statuses_message = []
-    for row in tqdm(rows_table[1:]):
+    for row in tqdm(get_soup(session, MAIN_PEP_URL
+                             ).select('#numerical-index tr')[1:]):
         row_href = find_tag(
             row, 'a', attrs={'class': 'pep reference internal'}
-            )['href']
+        )['href']
         row_type_and_status = find_tag(row, 'abbr').text
         if len(row_type_and_status) != 1:
             preview_status = row_type_and_status[1]
         row_link = urljoin(MAIN_PEP_URL, row_href)
-        soup = get_soup(session, row_link)
         try:
             soup = get_soup(session, row_link)
-        except AttributeError:
-            raise ValueError(
-                SOUP_ERROR_MESSAGE.format(url=row_link)
-            )
+        except ConnectionError as error:
+            ValueError(SOUP_ERROR_MESSAGE.format(url=row_link, error=error))
+            continue
         pep_title = find_tag(
             soup, 'dl', attrs={'class': 'rfc2822 field-list simple'}
         )
@@ -124,8 +125,7 @@ def pep(session):
                 )
             else:
                 count_pep_status[pep_status] += 1
-    for message in wrong_statuses_message:
-        logging.info(message)
+    list(map(lambda message: logging.info(message), wrong_statuses_message))
     return [
         ('Статус', 'Количество'),
         count_pep_status.items(),
@@ -143,10 +143,10 @@ MODE_TO_FUNCTION = {
 
 def main():
     configure_logging()
-    logging.info('Парсер запущен!')
+    logging.info(PASRER_START)
     arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
     args = arg_parser.parse_args()
-    logging.info(f'Аргументы командной строки: {args}')
+    logging.info(LOG_INFO_ARG_MESSAGE.format(args=args))
     try:
         session = requests_cache.CachedSession()
         if args.clear_cache:
@@ -156,8 +156,8 @@ def main():
         if results is not None:
             control_output(results, args)
     except Exception as error:
-        logging.error(f'Возникла ошибка: {error}', stack_info=True)
-    logging.info('Парсер завершил работу.')
+        logging.error(LOG_ERROR_MESSAGE.format(error=error), stack_info=True)
+    logging.info(PARSER_COMPLETE)
 
 
 if __name__ == '__main__':

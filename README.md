@@ -26,13 +26,13 @@ git clone git@github.com:Comsomolec/bs4_parser_pep.git
 python -m venv venv
 ```
 
-* Если у вас Linux/MacOS
+Если у вас Linux/MacOS
 
     ```
     source venv/bin/activate
     ```
 
-* Если у вас windows
+Если у вас windows
 
     ```
     source venv/scripts/activate
@@ -56,11 +56,10 @@ python main.py whats-new
 ```
 python main.py latest-versions
 ```
-- Скачать архив документации последней версии языка Python
+- Скачать архив документации последней версии языка Python. Архив будет доступен в директории проекта, в каталоге download/
 ```
 python main.py download
 ```
-Архив будет доступен в директории проекта, в каталоге download/
 - Считать статусы всех документов PEP
 ```
 python main.py pep
