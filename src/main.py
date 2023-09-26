@@ -30,7 +30,6 @@ WRONG_STATUSES_MESSAGE = (
 
 
 def whats_new(session):
-    # Строка селекторов длинной 88 символов, требуется "+" - "Конкатенация".
     logs = []
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     result = [('Ссылка на статью', 'Заголовок', 'Редактор, Автор')]
@@ -38,7 +37,7 @@ def whats_new(session):
         get_soup(
             session, whats_new_url
         ).select(
-            '#what-s-new-in-python div.toctree-wrapper ' +
+            '#what-s-new-in-python div.toctree-wrapper '
             'li.toctree-l1 a:-soup-contains("What’s New")'
         )
     ):
